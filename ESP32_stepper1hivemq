@@ -1,0 +1,187 @@
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+
+// ===== CONFIG WIFI =====
+const char* ssid = "SalsaModem";
+const char* password = "Salsa3349@";
+
+// ===== MQTT HiveMQ Cloud =====
+const char* mqttServer = "f4159c80eb524405b694dc0e6a311fe4.s1.eu.hivemq.cloud";
+const int mqttPort = 8883;
+const char* mqttUser = "hivemq.webclient.1765435980051";
+const char* mqttPass = "2:E?Q;RJ08&1cijeFbaT";
+
+const char* topicStepper = "home/esp32/stepper";
+const char* topicRelay   = "home/esp32/relay";
+const char* topicStatus  = "home/esp32/status";
+
+WiFiClientSecure wifiClient;
+PubSubClient client(wifiClient);
+
+// ===== PINS =====
+const int stepPin = 5;
+const int dirPin = 2;
+const int enablePin = 15;
+const int limitSwitchPin = 19; // pullup, active LOW
+const int relayPin = 18;
+
+const int stepDelayUs = 1000;
+const int maxForwardSteps = 10000;
+
+volatile int currentPosition = 0;
+
+// =========================
+//   WIFI & MQTT CONNECT
+// =========================
+void connectWiFi() {
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected.");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+}
+
+void connectMQTT() {
+  while (!client.connected()) {
+    Serial.println("Connecting MQTT...");
+    String clientId = "ESP32-" + String(random(0xffff), HEX);
+
+    if (client.connect(clientId.c_str(), mqttUser, mqttPass)) {
+      Serial.println("MQTT connected");
+      client.subscribe(topicStepper);
+      client.subscribe(topicRelay);
+      client.publish(topicStatus, "online");
+    } else {
+      Serial.print("Failed rc=");
+      Serial.println(client.state());
+      delay(2000);
+    }
+  }
+}
+
+// =========================
+//       CALLBACK MQTT
+// =========================
+void callback(char* topic, byte* payload, unsigned int length) {
+  String msg = "";
+  for (int i = 0; i < length; i++) msg += (char)payload[i];
+
+  Serial.print("MQTT: ");
+  Serial.print(topic);
+  Serial.print(" => ");
+  Serial.println(msg);
+
+  // Stepper
+  if (String(topic) == topicStepper) {
+    if (msg == "forward") {
+      int stepsToGo = maxForwardSteps - currentPosition;
+      if (stepsToGo > 0) moveForward(stepsToGo);
+    }
+    else if (msg == "backward") {
+      moveBackwardToLimit();
+    }
+  }
+
+  // Relay
+  else if (String(topic) == topicRelay) {
+    if (msg == "ON") {
+      digitalWrite(relayPin, HIGH);
+      client.publish(topicStatus, "relay_on");
+    }
+    else if (msg == "OFF") {
+      digitalWrite(relayPin, LOW);
+      client.publish(topicStatus, "relay_off");
+    }
+  }
+}
+
+// =========================
+//      STEPPER
+// =========================
+void moveForward(int steps) {
+  digitalWrite(dirPin, HIGH);
+  digitalWrite(enablePin, LOW);
+
+  for (int i = 0; i < steps; i++) {
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(stepDelayUs);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(stepDelayUs);
+    currentPosition++;
+  }
+
+  digitalWrite(enablePin, HIGH);
+  client.publish(topicStatus, "forward_done");
+}
+
+void moveBackwardToLimit() {
+  digitalWrite(dirPin, LOW);
+  digitalWrite(enablePin, LOW);
+
+  while (digitalRead(limitSwitchPin) == HIGH) {
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(stepDelayUs);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(stepDelayUs);
+  }
+
+  digitalWrite(enablePin, HIGH);
+  currentPosition = 0;
+  client.publish(topicStatus, "homed");
+}
+
+// =========================
+//          SETUP
+// =========================
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(stepPin, OUTPUT);
+  pinMode(dirPin, OUTPUT);
+  pinMode(enablePin, OUTPUT);
+  pinMode(limitSwitchPin, INPUT_PULLUP);
+  pinMode(relayPin, OUTPUT);
+
+  digitalWrite(relayPin, LOW);
+  digitalWrite(enablePin, HIGH);
+
+  // Homing awal
+  Serial.println("Homing...");
+  digitalWrite(enablePin, LOW);
+  digitalWrite(dirPin, LOW);
+
+  while (digitalRead(limitSwitchPin) == HIGH) {
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(stepDelayUs);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(stepDelayUs);
+  }
+
+  digitalWrite(enablePin, HIGH);
+  currentPosition = 0;
+  Serial.println("Homing selesai");
+
+  // WiFi
+  connectWiFi();
+
+  // TLS insecure (NO CERTIFICATE REQUIRED)
+  wifiClient.setInsecure();
+
+  // MQTT
+  client.setServer(mqttServer, mqttPort);
+  client.setCallback(callback);
+  connectMQTT();
+}
+
+// =========================
+//           LOOP
+// =========================
+void loop() {
+  if (!client.connected()) connectMQTT();
+  client.loop();
+}
