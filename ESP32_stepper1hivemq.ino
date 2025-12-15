@@ -3,8 +3,8 @@
 #include <PubSubClient.h>
 
 // ===== CONFIG WIFI =====
-const char* ssid = "SalsaModem";
-const char* password = "Salsa3349@";
+const char* ssid = "Tselhome-2453";
+const char* password = "72699084";
 
 // ===== MQTT HiveMQ Cloud =====
 const char* mqttServer = "f4159c80eb524405b694dc0e6a311fe4.s1.eu.hivemq.cloud";
