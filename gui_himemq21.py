@@ -33,24 +33,38 @@ USERNAME = "hivemq.webclient.1765435980051"
 PASSWORD = "2:E?Q;RJ08&1cijeFbaT"
 
 TOPIC_A_SENSOR = "sensor/airquality/A"
+TOPIC_B_SENSOR = "sensor/airquality/B"
 TOPIC_C_SENSOR = "sensor/airquality/C"
+TOPIC_D_SENSOR = "sensor/airquality/D"
+
+
 TOPIC_STEPPER  = "home/esp32/stepper"
 TOPIC_RELAY_B  = "home/esp32/relay"
 TOPIC_OTA_A = "esp32/A/ota"
 TOPIC_OTA_B = "esp32/B/ota"
+TOPIC_OTA_C = "esp32/C/ota"
+TOPIC_OTA_D = "esp32/D/ota"
+
 TOPIC_OTA_STATUS_A = "esp32/A/ota/status"
 TOPIC_OTA_STATUS_B = "esp32/B/ota/status"
+TOPIC_OTA_STATUS_C = "esp32/C/ota/status"
+TOPIC_OTA_STATUS_D = "esp32/D/ota/status"
 
 SERVICE_ACCOUNT_FILE = "iot-airquality-9f42d-firebase-adminsdk-fbsvc-ae01f665fd.json"
 DATABASE_URL = "https://iot-airquality-9f42d-default-rtdb.asia-southeast1.firebasedatabase.app/"
 FIREBASE_PATH_A = "AirQuality/ESP32A"
+FIREBASE_PATH_B = "AirQuality/ESP32B"
 FIREBASE_PATH_C = "AirQuality/ESP32C"
+FIREBASE_PATH_D = "AirQuality/ESP32D"
 DEFAULT_OTA_TOKEN = "MY_SECRET_TOKEN"
 
 # ---------------- GLOBAL ----------------
 client = None
 latest_A = None
+latest_B = None
 latest_C = None
+latest_D = None
+
 stepper_history = []
 log_queue = queue.Queue()
 
@@ -62,11 +76,13 @@ if FIREBASE_AVAILABLE:
             cred = credentials.Certificate(SERVICE_ACCOUNT_FILE)
             firebase_admin.initialize_app(cred, {"databaseURL": DATABASE_URL})
         ref_A = db.reference(FIREBASE_PATH_A)
+        ref_B = db.reference(FIREBASE_PATH_B)
         ref_C = db.reference(FIREBASE_PATH_C)
+        ref_D = db.reference(FIREBASE_PATH_D)
         print("Firebase connected OK")
     except Exception as e:
         FIREBASE_AVAILABLE = False
-        ref_A = ref_C = None
+        ref_A = ref_C = ref_B = ref_D = None
         print("Firebase init error:", e)
 
 # ---------------- LOG ----------------
@@ -88,14 +104,18 @@ def mqtt_on_connect(client_obj, userdata, flags, rc, properties=None):
     if rc == 0:
         thread_safe_log("MQTT connected to HiveMQ Cloud")
         client_obj.subscribe(TOPIC_A_SENSOR)
+        client_obj.subscribe(TOPIC_B_SENSOR)
         client_obj.subscribe(TOPIC_C_SENSOR)
+        client_obj.subscribe(TOPIC_D_SENSOR)
         client_obj.subscribe(TOPIC_OTA_STATUS_A)
         client_obj.subscribe(TOPIC_OTA_STATUS_B)
+        client_obj.subscribe(TOPIC_OTA_STATUS_C)
+        client_obj.subscribe(TOPIC_OTA_STATUS_D)
     else:
         thread_safe_log(f"MQTT connect failed rc={rc}")
 
 def mqtt_on_message(client_obj, userdata, msg):
-    global latest_A, latest_C
+    global latest_A, latest_B,latest_C,latest_D
     topic = msg.topic
     payload = msg.payload.decode(errors="ignore")
     try: data = json.loads(payload)
@@ -104,10 +124,16 @@ def mqtt_on_message(client_obj, userdata, msg):
     if topic == TOPIC_A_SENSOR and isinstance(data, dict):
         latest_A = data
         root.after(0, lambda d=data: update_sensor_display("A", d))
+    elif topic == TOPIC_B_SENSOR and isinstance(data, dict):
+        latest_B = data
+        root.after(0, lambda d=data: update_sensor_display("B", d))
     elif topic == TOPIC_C_SENSOR and isinstance(data, dict):
         latest_C = data
         root.after(0, lambda d=data: update_sensor_display("C", d))
-    elif topic in (TOPIC_OTA_STATUS_A, TOPIC_OTA_STATUS_B):
+    elif topic == TOPIC_D_SENSOR and isinstance(data, dict):
+        latest_D = data
+        root.after(0, lambda d=data: update_sensor_display("D", d))
+    elif topic in (TOPIC_OTA_STATUS_A, TOPIC_OTA_STATUS_B,TOPIC_OTA_STATUS_C,TOPIC_OTA_STATUS_D):
         thread_safe_log(f"OTA status {topic}: {payload}")
         root.after(0, lambda: append_txt_tab3(f"OTA status {topic}: {payload}"))
 
@@ -149,11 +175,22 @@ def update_sensor_display(dev, data):
         humA_var.set(data.get("hum","-"))
         pm25A_var.set(data.get("pm25","-"))
         co2A_var.set(data.get("co2","-"))
-    else:
+    elif dev == "B":
+        tempB_var.set(data.get("temp","-"))
+        humB_var.set(data.get("hum","-"))
+        pm25B_var.set(data.get("pm25","-"))
+        co2B_var.set(data.get("co2","-"))       
+        
+    elif dev == "C":
         tempC_var.set(data.get("temp","-"))
         humC_var.set(data.get("hum","-"))
         pm25C_var.set(data.get("pm25","-"))
-        co2C_var.set(data.get("co2","-"))
+        co2C_var.set(data.get("co2","-"))    
+    else:
+        tempD_var.set(data.get("temp","-"))
+        humD_var.set(data.get("hum","-"))
+        pm25D_var.set(data.get("pm25","-"))
+        co2D_var.set(data.get("co2","-"))
 
 # ---------------- OTA ----------------
 def append_txt_tab3(msg):
@@ -215,7 +252,9 @@ def save_now_to_firebase():
     try:
         now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         if latest_A: ref_A.child(now).set(latest_A)
+        if latest_B: ref_B.child(now).set(latest_B)
         if latest_C: ref_C.child(now).set(latest_C)
+        if latest_D: ref_D.child(now).set(latest_D)
         thread_safe_log(f"Saved manually to Firebase ({now})")
     except Exception as e:
         messagebox.showerror("Firebase", str(e))
@@ -290,7 +329,9 @@ def auto_save_loop():
             if FIREBASE_AVAILABLE:
                 try:
                     if latest_A: ref_A.child(t).set(latest_A)
+                    if latest_B: ref_B.child(t).set(latest_B)
                     if latest_C: ref_C.child(t).set(latest_C)
+                    if latest_D: ref_D.child(t).set(latest_D)
                     thread_safe_log(f"Auto-save data {t}")
                 except Exception as e:
                     thread_safe_log(f"Auto-save error: {e}")
@@ -437,7 +478,7 @@ log = ttk.LabelFrame(left3, text="Control ESP32-B Stepper & Relay")
 log.pack(fill="x")
 
 
-txt_tab1 = tk.Text(log,height=15,state="disabled"); txt_tab1.pack(fill="both",expand=True,padx=10,pady=10)
+txt_tab1 = tk.Text(log,height=35,state="disabled"); txt_tab1.pack(fill="both",expand=True,padx=10,pady=10)
 
 combo_var = tk.StringVar()
 ttk.Label(ctrl, text="Pilih Mode:").pack(pady=(5,2))
@@ -450,7 +491,9 @@ ttk.Button(ctrl, text="Kirim Mode", command=lambda: send_mode(combo_var.get())).
 # ---------------- Tab2 ----------------
 top2 = ttk.Frame(tab2); top2.pack(fill="x", padx=10,pady=5)
 ttk.Button(top2,text="Load A",command=lambda: load_history_from_firebase("A")).pack(side="left",padx=4)
+ttk.Button(top2,text="Load B",command=lambda: load_history_from_firebase("B")).pack(side="left",padx=4)
 ttk.Button(top2,text="Load C",command=lambda: load_history_from_firebase("C")).pack(side="left",padx=4)
+ttk.Button(top2,text="Load D",command=lambda: load_history_from_firebase("D")).pack(side="left",padx=4)
 ttk.Button(top2,text="Save Manual",command=save_now_to_firebase).pack(side="left",padx=10)
 ttk.Button(top2,text="Plot Grafik",command=lambda: plot_graph_popup()).pack(side="left",padx=4)
 fb_cols = ("timestamp","temp","hum","co2","pm25")
