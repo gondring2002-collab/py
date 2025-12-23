@@ -196,13 +196,11 @@ void moveForward(int steps) {
 
 
 void moveBackwardToLimit() {
-  stopStepper = false;
-
+  stopStepper = false;             // reset STOP
   digitalWrite(dirPin, LOW);
   digitalWrite(enablePin, LOW);
 
-  while (digitalRead(limitSwitchPin) == HIGH) {
-
+  while (digitalRead(limitSwitchPin) == HIGH) { // tunggu sampai LOW
     if (stopStepper) {
       Serial.println("Move Backward STOPPED");
       break;
@@ -213,10 +211,14 @@ void moveBackwardToLimit() {
     digitalWrite(stepPin, LOW);
     delayMicroseconds(stepDelayUs);
 
-    client.loop();   // <<< WAJIB
+    currentPosition--;             // <<< Penting, agar forward selanjutnya jalan
+    client.loop();
   }
 
   digitalWrite(enablePin, HIGH);
+  currentPosition = 0;             // reset posisi
+  client.publish(topicStatus, "backward_done");
+  Serial.println("Move Backward selesai");
 }
 
 
