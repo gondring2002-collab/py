@@ -467,11 +467,43 @@ def mqtt_on_message(client_obj, userdata, msg):
     except:
         data = None
 
-    if topic == TOPIC_ESP32_STATUS:
+    # ================= SENSOR =================
+    if topic == TOPIC_A_SENSOR and isinstance(data, dict):
+        latest_A = data
+        root.after(0, lambda d=data: update_sensor_display("A", d))
+
+    elif topic == TOPIC_B_SENSOR and isinstance(data, dict):
+        latest_B = data
+        root.after(0, lambda d=data: update_sensor_display("B", d))
+
+    elif topic == TOPIC_C_SENSOR and isinstance(data, dict):
+        latest_C = data
+        root.after(0, lambda d=data: update_sensor_display("C", d))
+
+    elif topic == TOPIC_D_SENSOR and isinstance(data, dict):
+        latest_D = data
+        root.after(0, lambda d=data: update_sensor_display("D", d))
+
+    # ================= OTA STATUS =================
+    elif topic in (
+        TOPIC_OTA_STATUS_A,
+        TOPIC_OTA_STATUS_B,
+        TOPIC_OTA_STATUS_C,
+        TOPIC_OTA_STATUS_D
+    ):
+        thread_safe_log(f"OTA status {topic}: {payload}")
+        root.after(0, lambda:
+            append_txt_tab3(f"OTA status {topic}: {payload}")
+        )
+
+    # ================= ESP32 STATUS =================
+    elif topic == TOPIC_ESP32_STATUS:
         esp32_last_status = payload
         thread_safe_log(f"ESP32 STATUS → {payload}")
-        log4(f"ESP32 STATUS → {payload}")          # TAMBAHAN
-        return
+        root.after(0, lambda:
+            log4(f"ESP32 STATUS → {payload}")
+        )
+
 #------------------------------------------------------------------------------------        
 def btn_relay1_on():
     log4("Kirim relay ON1")
