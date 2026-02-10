@@ -1,0 +1,12 @@
+C:\Users\gigin\AppData\Local\Programs\Python\Python311\python.exe -m PyInstaller ^
+--onefile ^
+--noconsole ^
+--name "hello_gigin_ESP32_Manager" ^
+--add-data "iot-airquality-9f42d-firebase-adminsdk-fbsvc-ae01f665fd.json;." ^
+--hidden-import paho ^
+--hidden-import paho.mqtt ^
+--hidden-import paho.mqtt.client ^
+--hidden-import firebase_admin ^
+--hidden-import firebase_admin.credentials ^
+--hidden-import firebase_admin.db ^
+gui_hivemq3_2.py
